@@ -26,6 +26,7 @@ class ActionWhitelistTests(unittest.TestCase):
         self.assertEqual(ids[0], "none")
         self.assertIn("lock", ids)
         self.assertIn("desktop", ids)
+        self.assertIn("hide-windows", ids)
         self.assertIn("shutdown", ids)
         self.assertIn("reboot", ids)
         self.assertIn("agent", ids)
@@ -71,6 +72,12 @@ class ActionWhitelistTests(unittest.TestCase):
         self.assertIn('["uwsm-app", "--", "gtk-launch", desktop + ".desktop"]', ACTIONS)
         self.assertIn("isDesktopId", ACTIONS)
         self.assertNotIn("bash -lc", ACTIONS)
+
+    def test_hide_windows_is_not_the_special_workspace_overlay(self):
+        self.assertIn('"hide-windows": { label: "Hide windows", kind: "hide-windows" }', ACTIONS)
+        self.assertIn("omacorners-hide", ACTIONS)
+        self.assertIn("moveWindowSilentDispatch", ACTIONS)
+        self.assertNotIn('"hide-windows": { label: "Hide windows", kind: "hypr"', ACTIONS)
 
     def test_no_shell_interpolation_helpers(self):
         lowered = ACTIONS.lower()

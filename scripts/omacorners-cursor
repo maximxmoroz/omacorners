@@ -166,6 +166,37 @@ def emit_pos(x: int, y: int) -> None:
     sys.stdout.flush()
 
 
+def emit_hit(corner: str, name: str) -> None:
+    sys.stdout.write(f"HIT {corner} {name}\n")
+    sys.stdout.flush()
+
+
+def hit_corner(x: int, y: int, monitors: list[dict[str, Any]], threshold: int = 16) -> tuple[str, str]:
+    """Layout-pixel corner hit, using the same logical monitor boxes as cursorpos."""
+    t = max(2, min(48, int(threshold)))
+    for mon in monitors:
+        sx, sy = mon["x"], mon["y"]
+        sw, sh = mon["width"], mon["height"]
+        if sw <= 0 or sh <= 0:
+            continue
+        if x < sx or y < sy or x >= sx + sw or y >= sy + sh:
+            continue
+        left = x - sx <= t
+        right = (sx + sw) - x <= t
+        top = y - sy <= t
+        bottom = (sy + sh) - y <= t
+        name = str(mon.get("name") or "-") or "-"
+        if top and left:
+            return "tl", name
+        if top and right:
+            return "tr", name
+        if bottom and left:
+            return "bl", name
+        if bottom and right:
+            return "br", name
+    return "none", "-"
+
+
 def emit_flag(name: str, on: bool) -> None:
     sys.stdout.write(f"{name} {1 if on else 0}\n")
     sys.stdout.flush()
@@ -284,6 +315,8 @@ def main() -> int:
             pos = parse_cursorpos(raw_pos.decode("utf-8", "replace"))
             if pos is not None:
                 if pos != last_pos or now - last_emit >= HEARTBEAT_S:
+                    corner, mon_name = hit_corner(pos[0], pos[1], monitors)
+                    emit_hit(corner, mon_name)
                     emit_pos(pos[0], pos[1])
                     last_pos = pos
                     last_emit = now

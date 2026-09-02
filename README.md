@@ -91,6 +91,7 @@ keybindings you added by hand are left in place.
 | Lock screen | `omarchy-system-lock` |
 | Screensaver | `omarchy-launch-screensaver force` |
 | Show desktop | `hyprctl dispatch togglespecialworkspace omacorners` |
+| Hide windows | parks this monitor's windows on `special:omacorners-hide` (toggle restores geometry) |
 | Omarchy menu | `omarchy-menu toggle` |
 | Notification history | `omarchy-shell notifications showHistory` |
 | Clipboard history | `omarchy-shell shell toggle omarchy.clipboard` |

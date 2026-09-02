@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.omargond.omacorners",
   "name": "Omacorners",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "author": "OmarGonD",
   "license": "MIT",
   "description": "macOS-style hot corners for Omarchy, with per-workspace overrides, Super-to-arm, and open-or-focus apps.",

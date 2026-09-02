@@ -81,6 +81,11 @@ Item {
   property bool pulsing: false
   property int helperRestarts: 0
   property bool helperStarted: false
+  property string lastHelperCorner: ""
+  property string lastHelperScreen: ""
+  property bool hideWindowsPending: false
+  property string hideWindowsMonitor: ""
+  property var hideWindowsParked: ({})
 
   readonly property string liveCorner: dwellCorner
   readonly property string liveScreen: dwellScreen
@@ -299,12 +304,29 @@ Item {
     if (pendingPower !== "") return true
     if (requireSuper && superSeen && !superArmed) return true
     if (suppressDrag && dragging) return true
-    if (suppressFullscreen && fullscreenActive) return true
     if (suppressOverlay && overlayBlocking()) return true
     return false
   }
 
-  function onCursor(x, y) {
+  function fullscreenOn(monitorName) {
+    var top = Hyprland.activeToplevel
+    var obj = top ? top.lastIpcObject : null
+    if (!obj) return false
+    var fs = obj.fullscreen
+    if (!(fs === 1 || fs === 2 || fs === true)) return false
+    var mon = obj.monitor
+    if (monitorName && mon !== undefined && mon !== null && String(mon) !== "" && String(mon) !== String(monitorName))
+      return false
+    return true
+  }
+
+  function scaledScreens() {
+    var fromHypr = Corners.screensFromHyprland(Hyprland.monitors)
+    if (fromHypr.length) return fromHypr
+    return Corners.screensFromModel(Quickshell.screens)
+  }
+
+  function onCursor(x, y, helperCorner, helperScreen) {
     cursorX = x
     cursorY = y
     if (pendingPower !== "") return
@@ -312,8 +334,17 @@ Item {
       clearDwell()
       return
     }
-    var hit = Corners.hit(Corners.screensFromModel(Quickshell.screens), x, y, thresholdPx)
+    var hit = null
+    if (helperCorner && helperCorner !== "none")
+      hit = { corner: helperCorner, name: helperScreen && helperScreen !== "-" ? helperScreen : "" }
+    else
+      hit = Corners.hit(root.scaledScreens(), x, y, thresholdPx)
     if (!hit || actionForCorner(hit.corner) === "none") {
+      latched = false
+      clearDwell()
+      return
+    }
+    if (suppressFullscreen && root.fullscreenOn(hit.name)) {
       latched = false
       clearDwell()
       return
@@ -355,12 +386,121 @@ Item {
   }
 
   function runAction(action) {
+    if (Actions.normalize(action) === "hide-windows") {
+      root.toggleHideWindows()
+      return
+    }
     Actions.run(action, function(dispatch) {
       var req = Hyprland.usingLua ? Actions.classicToLua(dispatch) : dispatch
       if (req) Hyprland.dispatch(req)
     }, function(argv) {
       Util.execArgv(argv)
     })
+  }
+
+  function workspaceIdOnScreen(screenName) {
+    if (screenName) {
+      try {
+        var model = Hyprland.monitors
+        var n = model ? model.length : 0
+        if (typeof n !== "number" || n < 0) n = 0
+        if (n > 16) n = 16
+        for (var i = 0; i < n; i++) {
+          var s = model[i]
+          if (!s || String(s.name || "") !== String(screenName)) continue
+          var aws = s.activeWorkspace
+          var aid = aws && aws.id != null ? Number(aws.id) : NaN
+          if (isFinite(aid) && aid > 0) return Math.round(aid)
+        }
+      } catch (e) {}
+    }
+    var key = Number(root.workspaceKey)
+    if (isFinite(key) && key > 0) return Math.round(key)
+    try {
+      var fw = Hyprland.focusedWorkspace
+      var fid = fw && fw.id != null ? Number(fw.id) : NaN
+      if (isFinite(fid) && fid > 0) return Math.round(fid)
+    } catch (e2) {}
+    return 0
+  }
+
+  function toggleHideWindows() {
+    hideWindowsMonitor = dwellScreen || lastHelperScreen || ""
+    hideWindowsPending = true
+    if (clientsProc.running) clientsProc.running = false
+    clientsProc.running = true
+  }
+
+  function applyHideWindows(raw) {
+    var list
+    try { list = JSON.parse(String(raw || "")) } catch (e) { return }
+    if (!Array.isArray(list)) return
+    var wsId = workspaceIdOnScreen(hideWindowsMonitor)
+    if (wsId <= 0) return
+    var slot = String(wsId)
+    var lua = Hyprland.usingLua === true
+    var specialName = "special:" + Actions.HIDE_SPECIAL
+    var hideable = []
+    var n = list.length
+    if (typeof n !== "number" || n < 0) return
+    if (n > 256) n = 256
+    for (var i = 0; i < n; i++) {
+      var c = list[i]
+      if (!c || typeof c !== "object") continue
+      if (c.mapped === false || c.hidden === true || c.pinned === true) continue
+      var addr = Actions.canonicalAddress(c.address)
+      if (!addr) continue
+      var name = c.workspace && c.workspace.name != null ? String(c.workspace.name) : ""
+      var id = c.workspace && c.workspace.id != null ? Number(c.workspace.id) : 0
+      if (name.indexOf("special") === 0) continue
+      if (!isFinite(id) || Math.round(id) !== wsId) continue
+      var at = Actions.xyPair(c.at)
+      var size = Actions.xyPair(c.size)
+      hideable.push({
+        address: addr,
+        workspace: wsId,
+        x: at ? at[0] : 0,
+        y: at ? at[1] : 0,
+        w: size ? size[0] : 0,
+        h: size ? size[1] : 0
+      })
+    }
+    hideable.sort(function(a, b) {
+      if (a.y !== b.y) return a.y - b.y
+      return a.x - b.x
+    })
+    var parked = hideWindowsParked && typeof hideWindowsParked === "object" ? hideWindowsParked : ({})
+    if (hideable.length) {
+      var nextParked = ({})
+      for (var key in parked) {
+        if (Object.prototype.hasOwnProperty.call(parked, key)) nextParked[key] = parked[key]
+      }
+      nextParked[slot] = hideable
+      hideWindowsParked = nextParked
+      for (var h = 0; h < hideable.length; h++) {
+        var hideReq = Actions.moveWindowSilentDispatch(specialName, hideable[h].address, lua)
+        if (hideReq) hyprDispatch(hideReq)
+      }
+      return
+    }
+    var saved = parked[slot] || []
+    if (!saved.length) return
+    for (var p = 0; p < saved.length; p++) {
+      var showReq = Actions.moveWindowSilentDispatch(String(saved[p].workspace), saved[p].address, lua)
+      if (showReq) hyprDispatch(showReq)
+    }
+    for (var g = 0; g < saved.length; g++) {
+      var win = saved[g]
+      var moveReq = Actions.moveWindowPixelExactDispatch(win.x, win.y, win.address, lua)
+      if (moveReq) hyprDispatch(moveReq)
+      var resizeReq = Actions.resizeWindowPixelExactDispatch(win.w, win.h, win.address, lua)
+      if (resizeReq) hyprDispatch(resizeReq)
+    }
+    var cleared = ({})
+    for (var k in parked) {
+      if (Object.prototype.hasOwnProperty.call(parked, k) && k !== slot) cleared[k] = parked[k]
+    }
+    hideWindowsParked = cleared
   }
 
   function hyprDispatch(request) {
@@ -521,14 +661,20 @@ Item {
           root.dragging = line === "DRAG 1"
           return
         }
+        if (line.indexOf("HIT ") === 0) {
+          var hitParts = line.split(" ")
+          root.lastHelperCorner = hitParts.length >= 2 ? hitParts[1] : ""
+          root.lastHelperScreen = hitParts.length >= 3 ? hitParts[2] : ""
+          return
+        }
         if (line.indexOf("POS ") !== 0) return
         var parts = line.split(" ")
-        if (parts.length !== 3) return
+        if (parts.length < 3) return
         var x = parseInt(parts[1], 10)
         var y = parseInt(parts[2], 10)
         if (isNaN(x) || isNaN(y)) return
         root.helperRestarts = 0
-        root.onCursor(x, y)
+        root.onCursor(x, y, root.lastHelperCorner, root.lastHelperScreen)
       }
     }
 
@@ -561,6 +707,11 @@ Item {
       waitForEnd: true
     }
     onExited: function(code) {
+      if (root.hideWindowsPending) {
+        root.hideWindowsPending = false
+        if (code === 0) root.applyHideWindows(clientsOut.text)
+        return
+      }
       var desk = root.focusDesktopId
       var action = root.focusAction
       var activeAddr = root.focusActiveAddr
@@ -604,6 +755,10 @@ Item {
         dragging: root.dragging,
         usingLua: Hyprland.usingLua === true
       })
+    }
+    function hideWindows(): string {
+      root.toggleHideWindows()
+      return "ok"
     }
     function toggle(): string {
       if (root.shell && typeof root.shell.toggle === "function") {

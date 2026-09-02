@@ -49,6 +49,16 @@ class CursorHelperTests(unittest.TestCase):
         self.assertEqual(mons[0]["height"], 720)
         self.assertEqual(mons[0]["name"], "DP-2")
 
+    def test_hit_corner_uses_logical_hdmi_geometry(self):
+        mons = [
+            {"name": "eDP-1", "x": 0, "y": 0, "width": 1920, "height": 1080},
+            {"name": "HDMI-A-1", "x": 1920, "y": 0, "width": 2048, "height": 1152},
+        ]
+        self.assertEqual(self.mod.hit_corner(3967, 1151, mons, 16), ("br", "HDMI-A-1"))
+        self.assertEqual(self.mod.hit_corner(1919, 1079, mons, 16), ("br", "eDP-1"))
+        self.assertEqual(self.mod.hit_corner(1920, 0, mons, 16), ("tl", "HDMI-A-1"))
+        self.assertEqual(self.mod.hit_corner(3000, 500, mons, 16), ("none", "-"))
+
     def test_parse_monitors_caps_and_skips_junk(self):
         self.assertEqual(self.mod.parse_monitors("nope"), [])
         self.assertEqual(self.mod.parse_monitors("{}"), [])

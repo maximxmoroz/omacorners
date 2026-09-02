@@ -10,6 +10,7 @@ var ORDER = [
   "lock",
   "screensaver",
   "desktop",
+  "hide-windows",
   "menu",
   "notifications",
   "clipboard",
@@ -34,6 +35,7 @@ var META = {
   "lock": { label: "Lock screen", kind: "argv", argv: ["omarchy-system-lock"] },
   "screensaver": { label: "Screensaver", kind: "argv", argv: ["omarchy-launch-screensaver", "force"] },
   "desktop": { label: "Show desktop", kind: "hypr", dispatch: "togglespecialworkspace omacorners" },
+  "hide-windows": { label: "Hide windows", kind: "hide-windows" },
   "menu": { label: "Omarchy menu", kind: "argv", argv: ["omarchy-menu", "toggle"] },
   "notifications": { label: "Notification history", kind: "argv", argv: ["omarchy-shell", "notifications", "showHistory"] },
   "clipboard": { label: "Clipboard history", kind: "argv", argv: ["omarchy-shell", "shell", "toggle", "omarchy.clipboard"] },
@@ -322,6 +324,60 @@ function focusWindowDispatch(addr, usingLua) {
   if (!canon) return ""
   if (usingLua) return 'hl.dsp.focus({ window = "address:' + canon + '" })'
   return "focuswindow address:" + canon
+}
+
+var HIDE_SPECIAL = "omacorners-hide"
+
+function moveWindowSilentDispatch(ws, addr, usingLua) {
+  var canon = canonicalAddress(addr)
+  if (!canon) return ""
+  var dest = String(ws || "")
+  if (!/^(special:[A-Za-z0-9_-]+|[1-9][0-9]{0,2})$/.test(dest)) return ""
+  if (usingLua) {
+    if (/^[1-9][0-9]{0,2}$/.test(dest))
+      return 'hl.dsp.window.move({ workspace = ' + dest + ', follow = false, window = "address:' + canon + '" })'
+    return 'hl.dsp.window.move({ workspace = "' + luaQuote(dest) + '", follow = false, window = "address:' + canon + '" })'
+  }
+  return "movetoworkspacesilent " + dest + ",address:" + canon
+}
+
+function moveWindowPixelExactDispatch(x, y, addr, usingLua) {
+  var canon = canonicalAddress(addr)
+  if (!canon) return ""
+  x = Math.round(Number(x))
+  y = Math.round(Number(y))
+  if (!isFinite(x) || !isFinite(y)) return ""
+  if (usingLua)
+    return 'hl.dsp.window.move({ x = ' + x + ', y = ' + y + ', relative = false, window = "address:' + canon + '" })'
+  return "movewindowpixel exact " + x + " " + y + ",address:" + canon
+}
+
+function resizeWindowPixelExactDispatch(w, h, addr, usingLua) {
+  var canon = canonicalAddress(addr)
+  if (!canon) return ""
+  w = Math.round(Number(w))
+  h = Math.round(Number(h))
+  if (!isFinite(w) || !isFinite(h) || w < 1 || h < 1) return ""
+  if (usingLua)
+    return 'hl.dsp.window.resize({ x = ' + w + ', y = ' + h + ', relative = false, window = "address:' + canon + '" })'
+  return "resizewindowpixel exact " + w + " " + h + ",address:" + canon
+}
+
+function xyPair(value) {
+  if (!value) return null
+  var a
+  var b
+  if (Array.isArray(value) && value.length >= 2) {
+    a = Number(value[0])
+    b = Number(value[1])
+  } else if (typeof value === "object") {
+    a = Number(value.x != null ? value.x : value[0])
+    b = Number(value.y != null ? value.y : value[1])
+  } else {
+    return null
+  }
+  if (!isFinite(a) || !isFinite(b)) return null
+  return [Math.round(a), Math.round(b)]
 }
 
 function classicToLua(classic) {

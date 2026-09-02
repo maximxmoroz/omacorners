@@ -71,3 +71,29 @@ function screensFromModel(model) {
   }
   return out
 }
+
+function screensFromHyprland(model) {
+  // hyprctl monitors report mode pixels; cursorpos is layout pixels (mode / scale).
+  var out = []
+  if (!model) return out
+  var n = 0
+  try { n = model.length } catch (e) { n = 0 }
+  if (typeof n !== "number" || n < 0) n = 0
+  if (n > 16) n = 16
+  for (var i = 0; i < n; i++) {
+    var s = model[i]
+    if (!s) continue
+    var scale = Number(s.scale)
+    if (!isFinite(scale) || scale <= 0) scale = 1
+    var sw = Number(s.width) || 0
+    var sh = Number(s.height) || 0
+    out.push({
+      name: String(s.name || ""),
+      x: Number(s.x) || 0,
+      y: Number(s.y) || 0,
+      width: Math.round(sw / scale),
+      height: Math.round(sh / scale)
+    })
+  }
+  return out
+}
