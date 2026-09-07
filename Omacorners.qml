@@ -60,6 +60,10 @@ Item {
   readonly property var workspaceMap: Actions.normalizeWorkspaceMap(pluginEntry.workspaces)
   readonly property bool welcomed: pluginEntry.welcomed === true
   readonly property string workspaceKey: Actions.workspaceKeyFrom(Hyprland.focusedWorkspace)
+  // Quickshell 0.3.1's Hyprland.usingLua reports false even though Hyprland 0.5x
+  // only accepts the Lua dispatch syntax, so force it on. Revert to
+  // `Hyprland.usingLua === true` if this ever runs on classic-dispatch Hyprland.
+  readonly property bool hyprUsingLua: true
 
   property var actionOptions: []
   property string pendingPower: ""
@@ -391,7 +395,7 @@ Item {
       return
     }
     Actions.run(action, function(dispatch) {
-      var req = Hyprland.usingLua ? Actions.classicToLua(dispatch) : dispatch
+      var req = root.hyprUsingLua ? Actions.classicToLua(dispatch) : dispatch
       if (req) Hyprland.dispatch(req)
     }, function(argv) {
       Util.execArgv(argv)
@@ -438,7 +442,7 @@ Item {
     var wsId = workspaceIdOnScreen(hideWindowsMonitor)
     if (wsId <= 0) return
     var slot = String(wsId)
-    var lua = Hyprland.usingLua === true
+    var lua = root.hyprUsingLua
     var specialName = "special:" + Actions.HIDE_SPECIAL
     var hideable = []
     var n = list.length
@@ -519,7 +523,7 @@ Item {
 
   function revealWindow(addr, ws) {
     if (!Actions.isWindowAddress(addr)) return
-    var lua = Hyprland.usingLua === true
+    var lua = root.hyprUsingLua
     var windowReq = Actions.focusWindowDispatch(addr, lua)
     if (!windowReq) return
     var fromWs = focusFromWorkspace || root.workspaceKey
@@ -753,7 +757,7 @@ Item {
         superArmed: root.superArmed,
         superSeen: root.superSeen,
         dragging: root.dragging,
-        usingLua: Hyprland.usingLua === true
+        usingLua: root.hyprUsingLua
       })
     }
     function hideWindows(): string {
